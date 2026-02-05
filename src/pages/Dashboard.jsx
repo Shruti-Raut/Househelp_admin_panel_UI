@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Container, Typography, Box, Button, Table, TableBody,
+    Typography, Box, Button, Table, TableBody,
     TableCell, TableContainer, TableHead, TableRow, Paper,
-    Card, CardContent, Grid, Link, Chip, AppBar, Toolbar
+    IconButton, Card, CardContent, Grid, Link, Chip, AppBar, Toolbar,
+    Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, Select, MenuItem,
+    Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -14,6 +16,12 @@ export default function Dashboard() {
     const [bookings, setBookings] = useState([]);
     const [providers, setProviders] = useState([]);
     const [stats, setStats] = useState({ services: 0, bookings: 0, providers: 0 });
+    const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+    const [selectedBooking, setSelectedBooking] = useState(null);
+    const [availableProviders, setAvailableProviders] = useState([]);
+    const [targetProvider, setTargetProvider] = useState('');
+    const [loadingProviders, setLoadingProviders] = useState(false);
+    
     const navigate = useNavigate();
     const token = localStorage.getItem('token');
 
@@ -65,6 +73,37 @@ export default function Dashboard() {
     const handleLogout = () => {
         localStorage.removeItem('token');
         navigate('/');
+    };
+
+    const handleOpenAssign = async (booking) => {
+        setSelectedBooking(booking);
+        setAssignDialogOpen(true);
+        setLoadingProviders(true);
+        setTargetProvider('');
+        try {
+            const res = await axios.get(`${API_URL}/bookings/${booking._id}/available-providers`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setAvailableProviders(res.data);
+        } catch (err) {
+            console.error('Failed to fetch available providers', err);
+        } finally {
+            setLoadingProviders(false);
+        }
+    };
+
+    const handleAssign = async () => {
+        if (!targetProvider) return;
+        try {
+            await axios.patch(`${API_URL}/bookings/${selectedBooking._id}/assign`, 
+                { providerId: targetProvider },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+            setAssignDialogOpen(false);
+            fetchData();
+        } catch (err) {
+            alert(err.response?.data?.message || 'Failed to assign provider');
+        }
     };
 
     return (
@@ -135,6 +174,7 @@ export default function Dashboard() {
                             <TableCell>Provider</TableCell>
                             <TableCell>Date/Slot</TableCell>
                             <TableCell>Status</TableCell>
+                            <TableCell align="right">Actions</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -154,11 +194,56 @@ export default function Dashboard() {
                                         variant={booking.status === 'pending' ? 'outlined' : 'filled'}
                                     />
                                 </TableCell>
+                                <TableCell align="right">
+                                    {booking.status === 'pending' && (
+                                        <Button size="small" variant="contained" color="secondary" onClick={() => handleOpenAssign(booking)}>
+                                            Assign
+                                        </Button>
+                                    )}
+                                </TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
             </TableContainer>
+
+            {/* Assignment Dialog */}
+            <Dialog open={assignDialogOpen} onClose={() => setAssignDialogOpen(false)} fullWidth maxWidth="xs">
+                <DialogTitle>Assign Provider</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" mb={2} color="textSecondary">
+                        Assigning for <b>{selectedBooking?.service?.name}</b> on {selectedBooking?.date} at {selectedBooking?.timeSlot}
+                    </Typography>
+                    
+                    <FormControl fullWidth sx={{ mt: 1 }}>
+                        <InputLabel>Select Provider</InputLabel>
+                        <Select
+                            value={targetProvider}
+                            label="Select Provider"
+                            onChange={(e) => setTargetProvider(e.target.value)}
+                            disabled={loadingProviders || availableProviders.length === 0}
+                        >
+                            {availableProviders.map(p => (
+                                <MenuItem key={p._id} value={p._id}>{p.name}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+
+                    {!loadingProviders && availableProviders.length === 0 && (
+                        <Alert severity="warning" sx={{ mt: 2 }}>No available providers found for this slot and radius.</Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
+                    <Button 
+                        variant="contained" 
+                        onClick={handleAssign} 
+                        disabled={!targetProvider}
+                    >
+                        Confirm Assignment
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Box>
     );
 }

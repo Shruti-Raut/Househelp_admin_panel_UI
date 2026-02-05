@@ -10,6 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
 import axios from 'axios';
 
 import CONFIG from '../constants/Config';
@@ -38,8 +39,11 @@ export default function Services() {
 
     const [currentService, setCurrentService] = useState({
         name: '',
-        pricing: [{ timeSlot: '15 mins', price: '' }],
-        tasks: [{ name: '', duration: '' }],
+        type: 'standard', // 'standard' or 'pack'
+        baseDuration: 60,
+        pricing: [{ startTime: '08:00', endTime: '20:00', price: '' }],
+        durationPacks: [{ duration: 60, label: '1 hour', price: '', originalPrice: '' }],
+        tasks: [{ name: '', duration: '', icon: '' }],
         exclusions: ['']
     });
 
@@ -69,7 +73,7 @@ export default function Services() {
     const addPricingRow = () => {
         setCurrentService({
             ...currentService,
-            pricing: [...currentService.pricing, { timeSlot: '', price: '' }]
+            pricing: [...currentService.pricing, { startTime: '08:00', endTime: '20:00', price: '' }]
         });
     };
 
@@ -114,13 +118,39 @@ export default function Services() {
         setCurrentService({ ...currentService, exclusions: newExclusions });
     };
 
+    const handlePackChange = (index, field, value) => {
+        const newPacks = [...currentService.durationPacks];
+        newPacks[index][field] = value;
+        setCurrentService({ ...currentService, durationPacks: newPacks });
+    };
+
+    const addPackRow = () => {
+        setCurrentService({
+            ...currentService,
+            durationPacks: [...currentService.durationPacks, { duration: 60, label: '', price: '', originalPrice: '' }]
+        });
+    };
+
+    const removePackRow = (index) => {
+        const newPacks = currentService.durationPacks.filter((_, i) => i !== index);
+        setCurrentService({ ...currentService, durationPacks: newPacks });
+    };
+
     const handleSave = async () => {
         const formData = new FormData();
         formData.append('name', currentService.name);
+        formData.append('type', currentService.type);
+        formData.append('baseDuration', currentService.baseDuration);
         formData.append('cities', JSON.stringify([selectedCity]));
         formData.append('pricing', JSON.stringify((currentService.pricing || []).map(p => ({
             ...p,
             price: Number(p.price)
+        }))));
+        formData.append('durationPacks', JSON.stringify((currentService.durationPacks || []).map(p => ({
+            ...p,
+            duration: Number(p.duration),
+            price: Number(p.price),
+            originalPrice: Number(p.originalPrice)
         }))));
         formData.append('tasks', JSON.stringify((currentService.tasks || []).filter(t => t.name)));
         formData.append('exclusions', JSON.stringify((currentService.exclusions || []).filter(e => e && e.trim())));
@@ -183,8 +213,11 @@ export default function Services() {
                     setSelectedCity('');
                     setCurrentService({ 
                         name: '', 
-                        pricing: [{ timeSlot: '15 mins', price: '' }],
-                        tasks: [{ name: '', duration: '' }],
+                        type: 'standard',
+                        baseDuration: 60,
+                        pricing: [{ startTime: '08:00', endTime: '20:00', price: '' }],
+                        durationPacks: [{ duration: 60, label: '1 hour', price: '', originalPrice: '' }],
+                        tasks: [{ name: '', duration: '', icon: '' }],
                         exclusions: ['']
                     });
                     setOpen(true);
@@ -196,6 +229,7 @@ export default function Services() {
                     <TableHead sx={{ backgroundColor: '#f5f5f5' }}>
                         <TableRow>
                             <TableCell>Service Name</TableCell>
+                            <TableCell>Type</TableCell>
                             <TableCell>Pricing (Slots)</TableCell>
                             <TableCell>Cities</TableCell>
                             <TableCell>Status</TableCell>
@@ -207,10 +241,18 @@ export default function Services() {
                             <TableRow key={service._id} hover>
                                 <TableCell sx={{ fontWeight: '500' }}>{service.name}</TableCell>
                                 <TableCell>
-                                    {service.pricing.map(p => (
+                                    <Chip 
+                                        label={service.type === 'pack' ? 'InstaHelp Pack' : 'Standard'} 
+                                        size="small" 
+                                        color={service.type === 'pack' ? 'secondary' : 'primary'}
+                                        variant="outlined"
+                                    />
+                                </TableCell>
+                                <TableCell>
+                                    {(service.pricing || []).map((p, idx) => (
                                         <Chip
-                                            key={p._id || p.timeSlot}
-                                            label={`${p.timeSlot}: ₹${p.price}`}
+                                            key={p._id || idx}
+                                            label={p.startTime ? `${p.startTime}-${p.endTime}: ₹${p.price}` : `${p.timeSlot}: ₹${p.price}`}
                                             size="small"
                                             sx={{ m: 0.5, backgroundColor: '#e3f2fd' }}
                                         />
@@ -239,7 +281,11 @@ export default function Services() {
                                         
                                         setCurrentService({ 
                                             ...service,
-                                            tasks: service.tasks && service.tasks.length > 0 ? service.tasks : [{ name: '', duration: '' }],
+                                            type: service.type || 'standard',
+                                            durationPacks: service.durationPacks && service.durationPacks.length > 0 
+                                                ? service.durationPacks 
+                                                : [{ duration: 60, label: '', price: '', originalPrice: '' }],
+                                            tasks: service.tasks && service.tasks.length > 0 ? service.tasks : [{ name: '', duration: '', icon: '' }],
                                             exclusions: service.exclusions && service.exclusions.length > 0 ? service.exclusions : ['']
                                         });
                                         setOpen(true);
@@ -256,9 +302,56 @@ export default function Services() {
                 <DialogTitle>{editMode ? 'Edit Service' : 'Add New Service'}</DialogTitle>
                 <DialogContent dividers>
                     <Grid container spacing={3}>
-                        <Grid item xs={12}>
+                        <Grid item xs={12} sm={4}>
+                            <FormControl fullWidth>
+                                <InputLabel>Service Type</InputLabel>
+                                <Select
+                                    value={currentService.type}
+                                    label="Service Type"
+                                    onChange={e => setCurrentService({ ...currentService, type: e.target.value })}
+                                >
+                                    <MenuItem value="standard">Standard Service</MenuItem>
+                                    <MenuItem value="pack">InstaHelp Pack</MenuItem>
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
                             <TextField fullWidth label="Service Name" variant="outlined" value={currentService.name} onChange={e => setCurrentService({ ...currentService, name: e.target.value })} />
                         </Grid>
+                        <Grid item xs={12} sm={4}>
+                            <TextField fullWidth label="Base Duration (mins)" variant="outlined" type="number" value={currentService.baseDuration} onChange={e => setCurrentService({ ...currentService, baseDuration: Number(e.target.value) })} />
+                        </Grid>
+
+                        {currentService.type === 'pack' && (
+                            <Grid item xs={12}>
+                                <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Duration Packs (Tiered Pricing)</Typography>
+                                {currentService.durationPacks.map((p, index) => (
+                                    <Grid container spacing={2} alignItems="center" key={index} sx={{ mb: 2 }}>
+                                        <Grid item xs={2}>
+                                            <TextField fullWidth size="small" label="Duration (mins)" type="number" value={p.duration} onChange={e => handlePackChange(index, 'duration', e.target.value)} />
+                                        </Grid>
+                                        <Grid item xs={3}>
+                                            <TextField fullWidth size="small" label="Display Label" value={p.label} onChange={e => handlePackChange(index, 'label', e.target.value)} placeholder="e.g. 1 hour" />
+                                        </Grid>
+                                        <Grid item xs={2.5}>
+                                            <TextField fullWidth size="small" label="Price (₹)" type="number" value={p.price} onChange={e => handlePackChange(index, 'price', e.target.value)} />
+                                        </Grid>
+                                        <Grid item xs={2.5}>
+                                            <TextField fullWidth size="small" label="Original Price (₹)" type="number" value={p.originalPrice} onChange={e => handlePackChange(index, 'originalPrice', e.target.value)} />
+                                        </Grid>
+                                        <Grid item xs={2}>
+                                            <IconButton color="error" onClick={() => removePackRow(index)} disabled={currentService.durationPacks.length === 1}>
+                                                <RemoveCircleIcon />
+                                            </IconButton>
+                                        </Grid>
+                                    </Grid>
+                                ))}
+                                <Button startIcon={<AddCircleIcon />} variant="outlined" size="small" onClick={addPackRow}>
+                                    Add Duration Tier
+                                </Button>
+                                <Divider sx={{ mt: 3 }} />
+                            </Grid>
+                        )}
 
                         <Grid item xs={12}>
                             <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Service Areas</Typography>
@@ -298,13 +391,16 @@ export default function Services() {
                         </Grid>
 
                         <Grid item xs={12}>
-                            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Pricing & Time Slots</Typography>
+                            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Pricing & Operating Windows</Typography>
                             {currentService.pricing.map((p, index) => (
                                 <Grid container spacing={2} alignItems="center" key={index} sx={{ mb: 2 }}>
-                                    <Grid item xs={5}>
-                                        <TextField fullWidth size="small" label="Time Slot (e.g. 15 mins)" value={p.timeSlot} onChange={e => handlePricingChange(index, 'timeSlot', e.target.value)} />
+                                    <Grid item xs={3.5}>
+                                        <TextField fullWidth size="small" label="Start Time" value={p.startTime} onChange={e => handlePricingChange(index, 'startTime', e.target.value)} placeholder="08:00" />
                                     </Grid>
-                                    <Grid item xs={5}>
+                                    <Grid item xs={3.5}>
+                                        <TextField fullWidth size="small" label="End Time" value={p.endTime} onChange={e => handlePricingChange(index, 'endTime', e.target.value)} placeholder="20:00" />
+                                    </Grid>
+                                    <Grid item xs={3}>
                                         <TextField fullWidth size="small" label="Price (₹)" type="number" value={p.price} onChange={e => handlePricingChange(index, 'price', e.target.value)} />
                                     </Grid>
                                     <Grid item xs={2}>
@@ -314,7 +410,9 @@ export default function Services() {
                                     </Grid>
                                 </Grid>
                             ))}
-                            <Button startIcon={<AddIcon />} variant="outlined" size="small" onClick={addPricingRow}>Add More Slots</Button>
+                            <Button startIcon={<AddCircleIcon />} variant="outlined" size="small" onClick={addPricingRow}>
+                                Add More Windows
+                            </Button>
                         </Grid>
 
                         <Grid item xs={12}>
