@@ -31,10 +31,18 @@ export default function Dashboard() {
                 axios.get(`${API_URL}/auth/providers`, config).catch(() => ({ data: [] })),
                 axios.get(`${API_URL}/services`, config)
             ]);
-            setBookings(bRes.data);
+            const sortedBookings = bRes.data.sort((a, b) => {
+                if (a.date !== b.date) {
+                    return b.date.localeCompare(a.date);
+                }
+                const slotA = a.timeSlot || "";
+                const slotB = b.timeSlot || "";
+                return slotB.localeCompare(slotA);
+            });
+            setBookings(sortedBookings);
             setProviders(pRes.data);
             setStats({
-                bookings: bRes.data.length,
+                bookings: sortedBookings.length,
                 providers: pRes.data.length,
                 services: sRes.data.length
             });

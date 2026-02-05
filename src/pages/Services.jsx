@@ -118,12 +118,12 @@ export default function Services() {
         const formData = new FormData();
         formData.append('name', currentService.name);
         formData.append('cities', JSON.stringify([selectedCity]));
-        formData.append('pricing', JSON.stringify(currentService.pricing.map(p => ({
+        formData.append('pricing', JSON.stringify((currentService.pricing || []).map(p => ({
             ...p,
             price: Number(p.price)
         }))));
-        formData.append('tasks', JSON.stringify(currentService.tasks.filter(t => t.name)));
-        formData.append('exclusions', JSON.stringify(currentService.exclusions.filter(e => e.trim())));
+        formData.append('tasks', JSON.stringify((currentService.tasks || []).filter(t => t.name)));
+        formData.append('exclusions', JSON.stringify((currentService.exclusions || []).filter(e => e && e.trim())));
 
         files.forEach(file => {
             formData.append('images', file);
@@ -148,7 +148,11 @@ export default function Services() {
             setSelectedState('');
             fetchServices();
         } catch (err) {
-            alert('Failed to save service');
+            console.error(err);
+            const errorMsg = err.response && err.response.data && err.response.data.message 
+                ? err.response.data.message 
+                : 'Failed to save service';
+            alert(errorMsg);
         }
     };
 
@@ -359,7 +363,7 @@ export default function Services() {
                                     {currentService.images.map((img, idx) => (
                                         <Box key={idx} sx={{ position: 'relative' }}>
                                             <img 
-                                                src={`${CONFIG.API_URL}${img}`} 
+                                                src={img.startsWith('http') ? img : `${CONFIG.API_URL}${img}`} 
                                                 alt="service" 
                                                 style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 4, border: '1px solid #ddd' }} 
                                             />
